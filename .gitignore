@@ -1,0 +1,13 @@
+.DS_Store
+
+# Local runtime state
+docker/logistics_project/database/data/
+docker/logistics_project/ai_engine/dataset/train/
+docker/logistics_project/ai_engine/dataset/valid/
+docker/logistics_project/ai_engine/dataset/test/
+
+# Downloaded training archives and generated caches
+docker/logistics_project/dataset*.zip
+docker/logistics_project/ai_engine/__pycache__/
+docker/logistics_project/backend/**/__pycache__/
+docker/logistics_project/simulator/__pycache__/
