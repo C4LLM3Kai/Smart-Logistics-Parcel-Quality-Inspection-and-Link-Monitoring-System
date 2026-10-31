@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>智慧物流 2.0 - 数字孪生监控中心</title>
+    <!-- 引入 Vue 3, Element Plus, Three.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0f172a;
+            color: white;
+            font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+        }
+
+        .el-header {
+            background-color: #1e293b;
+            color: #fff;
+            line-height: 60px;
+            font-size: 24px;
+            font-weight: bold;
+            border-bottom: 1px solid #334155;
+        }
+
+        .dashboard {
+            padding: 20px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .box-card {
+            margin-bottom: 20px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #fff;
+        }
+
+        .data-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #409EFF;
+        }
+
+        .status-normal {
+            color: #67C23A;
+        }
+
+        .status-warning {
+            color: #F56C6C;
+        }
+
+        /* 改为红色更醒目 */
+        .log-box {
+            height: 200px;
+            overflow-y: auto;
+            background: #0f172a;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        #three-container {
+            width: 100%;
+            height: 300px;
+            background: #000;
+            overflow: hidden;
+        }
+
+        .control-panel {
+            padding: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <el-container>
+            <el-header>
+                LOGISTICS DIGITWIN <span style="font-size: 14px; opacity: 0.8; margin-left: 20px;">数字孪生 V2.0 (Redis +
+                    Edge AI)</span>
+                <el-button type="danger" style="float: right; margin-top: 15px;" @click="sendControl('STOP')">紧急停机
+                    (STOP)</el-button>
+                <el-button type="success" style="float: right; margin-top: 15px; margin-right: 10px;"
+                    @click="sendControl('START')">恢复运行 (START)</el-button>
+            </el-header>
+            <el-main class="dashboard">
+                <el-row :gutter="20">
+                    <!-- 3D 数字孪生 -->
+                    <el-col :span="12">
+                        <el-card class="box-card">
+                            <template #header>
+                                <div class="card-header"><span>3D 仓库数字孪生 (Three.js)</span></div>
+                            </template>
+                            <div id="three-container"></div>
+                            <div style="text-align: center; font-size: 12px; color: #999; margin-top:5px">
+                                实时同步物理坐标 | 旋转模型查看细节
+                            </div>
+                        </el-card>
+                    </el-col>
+
+                    <!-- AI 与融合感知 -->
+                    <el-col :span="12">
+                        <el-card class="box-card">
+                            <template #header>
+                                <div class="card-header"><span>多模态融合感知 (Fusion Risk)</span></div>
+                            </template>
+                            <el-row>
+                                <el-col :span="12">
+                                    <div class="data-value"
+                                        :class="currentPackage.fusion_risk === 'HIGH' ? 'status-warning' : 'status-normal'">
+                                        {{ currentPackage.fusion_risk === 'HIGH' ? '高风险 (HIGH RISK)' : '安全 (SAFE)' }}
+                                    </div>
+                                    <p>算法逻辑: 视觉 Bbox + 震动 > 0.8 G</p>
+                                </el-col>
+                                <el-col :span="12">
+                                    <p>目标检测结果:</p>
+                                    <el-tag v-if="aiResult" type="warning">{{ aiResult }}</el-tag>
+                                    <el-tag v-else type="info">等待推理...</el-tag>
+                                </el-col>
+                            </el-row>
+                        </el-card>
+
+                        <el-card class="box-card">
+                            <template #header>
+                                <div class="card-header"><span>实时重量 (Weight)</span></div>
+                            </template>
+                            <div class="data-value">{{ currentPackage.weight }} kg</div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+                <el-row :gutter="20">
+                    <el-col :span="16">
+                        <el-card class="box-card">
+                            <template #header>
+                                <div class="card-header"><span>传感器数据 (Prometheus 监控源)</span></div>
+                            </template>
+                            <div id="chart" style="height: 250px;"></div>
+                        </el-card>
+                    </el-col>
+
+                    <el-col :span="8">
+                        <el-card class="box-card">
+                            <template #header>
+                                <div class="card-header"><span>系统拓扑监控</span></div>
+                            </template>
+                            <el-timeline>
+                                <el-timeline-item :color="'#67C23A'">边缘层 (Simulator) -> 正常</el-timeline-item>
+                                <el-timeline-item :color="'#67C23A'">中间件 (Mosquitto) -> 正常</el-timeline-item>
+                                <el-timeline-item :color="redisStatus ? '#67C23A' : '#F56C6C'">缓存层 (Redis) -> {{
+                                    redisStatus ? 'Connected' : 'Disconnected' }}</el-timeline-item>
+                                <el-timeline-item :color="'#409EFF'">云端 AI (YOLO) -> Ready</el-timeline-item>
+                            </el-timeline>
+                        </el-card>
+                        <el-card class="box-card">
+                            <template #header>
+                                <div class="card-header"><span>AI 视觉质检 (Camera & Upload)</span></div>
+                            </template>
+
+                            <!-- 摄像头区域 -->
+                            <div class="monitor-video" style="position: relative; overflow: hidden;">
+                                <video id="video" width="100%" height="200" autoplay style="object-fit: cover;"
+                                    v-show="cameraActive"></video>
+                                <img id="preview" :src="previewImage" v-if="previewImage && !cameraActive"
+                                    style="width: 100%; height: 200px; object-fit: contain;">
+                                <div v-if="!cameraActive && !previewImage"
+                                    style="text-align: center; color: #666; padding-top: 80px;">
+                                    点击下方按钮开启摄像头或上传
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 10px; display: flex; justify-content: space-between;">
+                                <div>
+                                    <el-button type="primary" size="small" @click="startCamera">开启摄像头</el-button>
+                                    <el-button type="success" size="small" @click="captureAndUpload"
+                                        :disabled="!cameraActive">拍照鉴定</el-button>
+                                </div>
+                                <el-upload class="upload-demo" action="#" :show-file-list="false" :auto-upload="false"
+                                    :on-change="handleFileChange">
+                                    <el-button type="warning" size="small">上传图片</el-button>
+                                </el-upload>
+                            </div>
+
+                            <div style="margin-top: 10px; font-size: 12px;">
+                                <p>检测结果: <span :style="{color: aiResultScore > 0.5 ? '#67C23A' : '#F56C6C'}">{{ aiResult
+                                        }}</span></p>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+                <el-row>
+                    <el-col :span="24">
+                        <el-card class="box-card">
+                            <template #header>
+                                <div class="card-header"><span>实时日志 (Redis Buffer -> MongoDB)</span></div>
+                            </template>
+                            <div class="log-box">
+                                <div v-for="(log, index) in logs" :key="index">
+                                    [{{ log.timestamp }}] {{ log.package_id }} | 融合风险: {{ log.fusion_risk || 'N/A' }} |
+                                    震动: {{ log.sensors.vibration }}
+                                </div>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+
+            </el-main>
+        </el-container>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        const app = createApp({
+            setup() {
+                const currentPackage = ref({ id: '', weight: 0, fusion_risk: 'LOW' });
+                const logs = ref([]);
+                const aiResult = ref('等待检测...');
+                const aiResultScore = ref(0);
+                const redisStatus = ref(true);
+                const cameraActive = ref(false);
+                const previewImage = ref('');
+                let chart = null;
+                let videoStream = null;
+
+                // Three.js 变量
+                let scene, camera, renderer, cube;
+
+                const initThree = () => {
+                    const container = document.getElementById('three-container');
+                    scene = new THREE.Scene();
+                    camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+                    renderer = new THREE.WebGLRenderer({ alpha: true }); // 透明背景
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                    container.appendChild(renderer.domElement);
+
+                    // 创建一个看起来像包裹的立方体
+                    const geometry = new THREE.BoxGeometry(2, 2, 2);
+                    const material = new THREE.MeshLambertMaterial({ color: 0xcd853f }); // 纸箱颜色
+                    cube = new THREE.Mesh(geometry, material);
+                    scene.add(cube);
+
+                    // 边框
+                    const edges = new THREE.EdgesGeometry(geometry);
+                    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 }));
+                    cube.add(line);
+
+                    // 灯光
+                    const light = new THREE.DirectionalLight(0xffffff, 1);
+                    light.position.set(5, 5, 5);
+                    scene.add(light);
+                    const ambientLight = new THREE.AmbientLight(0x404040);
+                    scene.add(ambientLight);
+
+                    camera.position.z = 5;
+
+                    animate();
+                };
+
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    // 默认缓慢自转，收到数据后会根据数据旋转
+                    cube.rotation.x += 0.005;
+                    cube.rotation.y += 0.005;
+                    renderer.render(scene, camera);
+                };
+
+                // MQTT 模拟实时驱动 3D
+                const update3DModel = (data) => {
+                    if (cube && data.sensors) {
+                        // 震动越大，箱子晃动越明显
+                        const vib = data.sensors.vibration;
+                        if (vib > 0.5) {
+                            cube.rotation.z = Math.random() * vib; // 模拟剧烈震动
+                            cube.material.color.setHex(0xff0000); // 变红
+                        } else {
+                            cube.rotation.z = 0;
+                            cube.material.color.setHex(0xcd853f); // 恢复纸箱色
+                        }
+                    }
+                };
+
+                const sendControl = async (cmd) => {
+                    try {
+                        // 调用反向控制接口
+                        const endpoint = cmd === 'STOP' ? '/api/control/stop' : '/api/control/start';
+                        await axios.post(endpoint);
+                        alert(`指令 ${cmd} 已发送至边缘节点！`);
+                    } catch (e) {
+                        alert("指令发送失败: " + e.message);
+                    }
+                }
+                // 摄像头逻辑
+                const startCamera = async () => {
+                    // 1. 检查浏览器支持
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        alert("您的浏览器不支持摄像头访问，或者当前并非 HTTPS/Localhost 环境。\n\n请尝试使用 'localhost' 或 '127.0.0.1' 访问，不要使用 IP 地址。");
+                        return;
+                    }
+
+                    try {
+                        const video = document.getElementById('video');
+                        // 添加 constraints 明确要求
+                        const stream = await navigator.mediaDevices.getUserMedia({
+                            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "environment" }
+                        });
+                        video.srcObject = stream;
+                        // 必须调用 play() 以防 autoplay 被阻止
+                        video.play();
+                        videoStream = stream;
+                        cameraActive.value = true;
+                        previewImage.value = '';
+                    } catch (err) {
+                        console.error(err);
+                        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                            alert("摄像头权限已被拒绝。请点击浏览器地址栏左侧的图标，重置权限并刷新页面。");
+                        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                            alert("未检测到摄像头设备。");
+                        } else {
+                            alert("无法访问摄像头: " + err.message);
+                        }
+                    }
+                };
+                const fetchData = async () => {
+                    try {
+                        const res = await axios.get('/api/data');
+                        if (res.data && res.data.length > 0) {
+                            const latest = res.data[0];
+                            currentPackage.value = latest;
+                            logs.value = res.data;
+
+                            // 更新图表
+                            updateChart(res.data);
+                            // 更新 3D
+                            update3DModel(latest);
+
+                            // [FIX] 移除模拟的 AI 覆盖逻辑
+                            // aiResult 应该只由用户上传或拍照触发更新，不应该被传感器数据覆盖
+
+                            redisStatus.value = true; // 假设数据能回来 Redis 就是活的
+                        }
+                    } catch (e) {
+                        console.error("API Error", e);
+                        redisStatus.value = false;
+                    }
+                };
+
+                const updateChart = (data) => {
+                    if (!chart) return;
+                    // ... (保持原图表逻辑或简化) ...
+                    const reversed = [...data].reverse();
+                    const times = reversed.map(d => new Date(d.timestamp * 1000).toLocaleTimeString());
+                    const vibs = reversed.map(d => d.sensors?.vibration || 0);
+
+                    chart.setOption({
+                        tooltip: { trigger: 'axis' },
+                        xAxis: { type: 'category', data: times },
+                        yAxis: { type: 'value', name: '震动 G-force' },
+                        series: [{ data: vibs, type: 'line', smooth: true, areaStyle: {} }]
+                    });
+                }
+
+                onMounted(() => {
+                    chart = echarts.init(document.getElementById('chart'));
+                    initThree();
+                    setInterval(fetchData, 1000); // 1s 轮询，更加实时
+                });
+
+                // [NEW] 处理图片上传
+                const handleFileChange = async (file) => {
+                    const formData = new FormData();
+                    formData.append('file', file.raw);
+
+                    try {
+                        aiResult.value = "AI 正在分析...";
+                        // 调用 Nginx 代理的 AI 接口
+                        const res = await axios.post('/ai/predict', formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+
+                        if (res.data.predictions && res.data.predictions.length > 0) {
+                            const pred = res.data.predictions[0];
+                            const label = pred.label || pred.class;
+                            const score = (pred.score * 100).toFixed(1);
+                            const isDamaged = pred.status === 'RISK' || pred.is_damaged === true;
+
+                            if (isDamaged) {
+                                aiResult.value = `⚠️ 发现破损! 类型: ${label} (${score}%)`;
+                            } else {
+                                aiResult.value = `✅ 检测通过: ${label} (${score}%)`;
+                            }
+                            aiResultScore.value = isDamaged ? 0.1 : 0.9; // 控制颜色 (Red for < 0.5)
+                        } else {
+                            // [FIX] 如果没有检测到任何破损框，认为是完好
+                            aiResult.value = "✅ 包裹完好 (Passed)";
+                            aiResultScore.value = 1.0; // 绿色
+                        }
+                    } catch (e) {
+                        aiResult.value = "检测失败: " + e.message;
+                        console.error(e);
+                    }
+                };
+
+                // [NEW] 拍照并上传
+                const captureAndUpload = async () => {
+                    if (!videoStream) return;
+
+                    const video = document.getElementById('video');
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext('2d').drawImage(video, 0, 0);
+
+                    // 显示预览
+                    previewImage.value = canvas.toDataURL('image/jpeg');
+                    // 停止摄像头预览（可选，这里为了体验不停止，只显示截图结果有点怪，这里逻辑简化）
+                    // 转换为 Blob 上传
+                    canvas.toBlob(async (blob) => {
+                        const file = new File([blob], "capture.jpg", { type: "image/jpeg" });
+                        // 复用上传逻辑 (构造 fake file object wrapper)
+                        await handleFileChange({ raw: file });
+                    }, 'image/jpeg');
+                };
+
+                return { currentPackage, logs, aiResult, aiResultScore, redisStatus, sendControl, startCamera, cameraActive, previewImage, handleFileChange, captureAndUpload };
+            }
+        });
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+
+</html>
