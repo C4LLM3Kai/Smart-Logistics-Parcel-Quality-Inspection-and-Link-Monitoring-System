@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'backend_api'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['backend:8000'] 
+    # 注意：这需要 Backend 实现 /metrics 接口 (我们稍后会添加 prometheus-client)
