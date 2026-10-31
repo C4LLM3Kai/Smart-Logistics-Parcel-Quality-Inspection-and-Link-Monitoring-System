@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 5
+names: ['crushed', 'hole', 'scratched-cracked', 'shrunken-corner', 'tear-ripped']
+
+roboflow:
+  workspace: new-workspace-1lgnq
+  project: damage-segmentation-task-bv7d8
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/new-workspace-1lgnq/damage-segmentation-task-bv7d8/dataset/1
