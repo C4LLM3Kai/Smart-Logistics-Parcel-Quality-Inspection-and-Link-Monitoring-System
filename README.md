@@ -22,10 +22,9 @@ docker compose up --build
 
 - `docker/logistics_project/`：可运行的微服务源码、Docker 配置、模型文件和监控配置。
 - `materials/`：已匿名化的课程报告与演示文稿，Office 作者元数据也已清理。
-- `media/`：抽样确认不含姓名的开题和系统演示视频。
 
 ## 数据集与运行数据
 
 训练数据集、重复数据集压缩包和 MongoDB 本地数据库文件未提交到 GitHub：它们体积较大且属于运行产物。`docker/logistics_project/ai_engine/dataset/` 只保留数据集配置说明；需要训练时，可根据 `dataset-README.*.txt` 重新下载数据集。模型权重已保留在 `ai_engine/model/`，用于直接启动推理服务。
 
-结题视频未上传，因为原视频画面包含未匿名化的人名；对应的结题 PPT 已完成匿名化处理。
+视频材料未上传；对应的课程报告和 PPT 已完成匿名化处理。
